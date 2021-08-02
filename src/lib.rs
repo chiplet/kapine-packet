@@ -1,3 +1,5 @@
+#![no_std]
+
 use crc16::{State, MODBUS};
 
 #[derive(Debug)]
