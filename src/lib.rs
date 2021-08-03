@@ -28,13 +28,9 @@ impl Packet {
         match self.payload {
             None => (),
             Some(payload) => {
-                let mut j = 0;
-                let mut byte = payload[j];
-                while byte != 0x00 {
-                    buffer[i] = payload[j];
+                for byte in payload {
+                    buffer[i] = byte;
                     i = i + 1;
-                    j = j + 1;
-                    byte = payload[j]
                 }
             }
         };
@@ -147,7 +143,10 @@ mod tests {
         let packet_struct = Packet::new(0x01, Some(&payload));
         let len = packet_struct.write_bytes(&mut buffer);
 
+        let correct = [0xAA, 0x55, 0x01, 255, 1, 2, 3, 0];
+
         assert_eq!(len, 261);
+        assert_eq!(&correct, &buffer[..8])
     }
 
     #[test]
