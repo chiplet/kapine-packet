@@ -43,7 +43,7 @@ impl Packet {
         i = i + 1;
         buffer[i] = (self.checksum >> 8) as u8;
 
-        (self.length + 6).into()
+        (self.length as u32) + 6
     }
 
     /// Computes checksum for the packet and populates the `checksum` field accordingly
@@ -132,6 +132,22 @@ mod tests {
         let too_large = [3; 256];
         let command = 0x05;
         let packet = Packet::new(command, Some(&too_large[..]));
+    }
+
+    #[test]
+    fn large_payload() {
+        const BUF_SIZE: usize = 261;
+        let mut buffer: [u8; BUF_SIZE] = [0; BUF_SIZE];
+
+        let mut payload = [0; 255];
+        payload[0] = 1;
+        payload[1] = 2;
+        payload[2] = 3;
+
+        let packet_struct = Packet::new(0x01, Some(&payload));
+        let len = packet_struct.write_bytes(&mut buffer);
+
+        assert_eq!(len, 261);
     }
 
     #[test]
