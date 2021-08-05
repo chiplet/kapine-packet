@@ -2,7 +2,7 @@
 
 use crc16::{State, MODBUS};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Packet {
     pub sync: u16,
     pub command: u8,
