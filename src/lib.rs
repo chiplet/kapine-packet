@@ -43,7 +43,7 @@ impl Packet {
     }
 
     /// Computes checksum for the packet and populates the `checksum` field accordingly
-    fn compute_checksum(&mut self) {
+    fn compute_checksum(&self) -> u16 {
         let mut state = State::<MODBUS>::new();
 
         state.update(&self.sync.to_le_bytes());
@@ -53,46 +53,49 @@ impl Packet {
             None => (),
             Some(payload) => {
                 let payload_len = self.length as usize;
-                state.update(&payload[0..payload_len]);
+                state.update(&payload[0..payload_len]); // FIXME: something wrong with this?
             }
         };
 
-        self.checksum = state.get()
+        state.get()
     }
 
-    pub fn new(command: u8, payload: Option<&[u8]>) -> Self {
+    /// Create an empty packet with only the sync field populated
+    pub const fn new() -> Self {
+        Packet {
+            sync: 0x55AA,
+            command: 0,
+            length: 0,
+            payload: None,
+            checksum: 0,
+        }
+    }
 
-        let mut packet = match payload {
-            None => {
-                Packet {
-                    sync: 0x55AA,
-                    command,
-                    length: 0u8,
-                    payload: None,
-                    checksum: 0u16, // populated by `compute_checksum`
-                }
-            },
-            Some(p) => {
-                let payload_length = p.len();
-                assert!(payload_length <= 255);
+    pub fn from(command: u8, payload: Option<&[u8]>) -> Self {
+        let mut packet = Packet::new();
+        packet.command = command;
+        if let Some(payload_src) = payload {
+            assert!(payload_src.len() <= 255);
 
-                let mut payload_buf = [0u8; 255];
-                for (src, dest) in p.iter().zip(payload_buf.iter_mut()) {
-                    *dest = *src;
-                }
+            packet.length = payload_src.len() as u8;
 
-                Packet {
-                    sync: 0x55AA,
-                    command,
-                    length: payload_length as u8,
-                    payload: Some(payload_buf),
-                    checksum: 0u16, // populated by `compute_checksum`
-                }
+            let mut payload_new = [0u8; 255];
+            for (src, dest) in payload_src.iter().zip(payload_new.iter_mut()) {
+                *dest = *src;
             }
+            packet.payload = Some(payload_new);
         };
 
-        packet.compute_checksum();
+        packet.checksum = packet.compute_checksum();
         packet
+    }
+
+    pub fn validate(self) -> Result<Self, ()> {
+        if (self.compute_checksum() == self.checksum) {
+            Ok(self)
+        } else {
+            Err(())
+        }
     }
 }
 
@@ -102,10 +105,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_is_correct() {
+    fn from_is_correct() {
         let payload = b"Hello, world!";
         let command = 0x03;
-        let packet = Packet::new(command, Some(&payload[..]));
+        let packet = Packet::from(command, Some(&payload[..]));
         assert_eq!(packet.command, command);
 
         match packet.payload {
@@ -127,7 +130,7 @@ mod tests {
     fn new_disallows_large_payloads() {
         let too_large = [3; 256];
         let command = 0x05;
-        let packet = Packet::new(command, Some(&too_large[..]));
+        let packet = Packet::from(command, Some(&too_large[..]));
     }
 
     #[test]
@@ -140,13 +143,28 @@ mod tests {
         payload[1] = 2;
         payload[2] = 3;
 
-        let packet_struct = Packet::new(0x01, Some(&payload));
+        let packet_struct = Packet::from(0x01, Some(&payload));
         let len = packet_struct.write_bytes(&mut buffer);
 
         let correct = [0xAA, 0x55, 0x01, 255, 1, 2, 3, 0];
 
         assert_eq!(len, 261);
-        assert_eq!(&correct, &buffer[..8])
+        assert_eq!(&buffer[..8], &correct)
+    }
+
+    #[test]
+    fn validate() {
+        let mut packet = Packet::from(8, Some(b"Moi :DD"));
+        packet = match packet.validate() {
+            Ok(p) => p, // should work
+            Err(e) => panic!("checksum should be valid"),
+        };
+
+        packet.checksum += 1;
+        match packet.validate() {
+            Ok(p) => panic!("should return error type"),
+            Err(e) => (),
+        }
     }
 
     #[test]
@@ -156,7 +174,7 @@ mod tests {
 
         let command = 0x01;
         let payload = [0xAA, 0xAA, 0xAA];
-        let p = Packet::new(command, Some(&payload[..]));
+        let p = Packet::from(command, Some(&payload[..]));
 
         assert_eq!(p.checksum, example_checksum);
     }
@@ -164,7 +182,7 @@ mod tests {
     #[test]
     fn no_payload() {
         let command = 0x08;
-        let p = Packet::new(command, None);
+        let p = Packet::from(command, None);
 
         assert_eq!(p.length, 0);
     }
