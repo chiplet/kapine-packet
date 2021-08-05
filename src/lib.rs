@@ -28,8 +28,8 @@ impl Packet {
         match self.payload {
             None => (),
             Some(payload) => {
-                for byte in payload {
-                    buffer[i] = byte;
+                for j in 0..(self.length as usize) {
+                    buffer[i] = payload[j];
                     i = i + 1;
                 }
             }
